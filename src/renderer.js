@@ -1771,9 +1771,9 @@ function App() {
                   h('button', { className: 'btn-icon', onClick: () => copyToClipboard(selectedItem.password) }, 'Copy')
                 )
               ),
-              selectedItem.websiteUrl && h('div', { className: 'detail-field website-field' },
+              h('div', { className: 'detail-field website-field' },
                 h('label', null, 'Website'),
-                h('div', { className: 'field-value field-value-website' },
+                selectedItem.websiteUrl ? h('div', { className: 'field-value field-value-website' },
                   h('span', { className: 'website-url', title: selectedItem.websiteUrl },
                     extractDomain(selectedItem.websiteUrl) || selectedItem.websiteUrl
                   ),
@@ -1781,13 +1781,13 @@ function App() {
                     h('button', {
                       className: 'btn-icon btn-primary-small',
                       onClick: () => handleOpenWebsite(selectedItem.websiteUrl, selectedItem)
-                    }, 'Open & Fill'),
+                    }, 'Open'),
                     h('button', {
                       className: 'btn-icon',
                       onClick: () => copyToClipboard(selectedItem.websiteUrl)
                     }, 'Copy')
                   )
-                )
+                ) : h('span', { className: 'no-tags' }, 'Not set')
               ),
               h('div', { className: 'detail-field' },
                 h('label', null, 'Tags'),

@@ -1449,13 +1449,6 @@ body::after {
 .website-actions {
   display: flex;
   gap: 0.35rem;
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.field-value-website:hover .website-actions,
-.field-value-website:focus-within .website-actions {
-  opacity: 1;
 }
 
 .btn-primary-small {
