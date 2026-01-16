@@ -1,0 +1,36 @@
+{
+  "name": "password-manager",
+  "version": "1.0.0",
+  "description": "Secure password manager built with Electron and React",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "build": {
+    "appId": "com.passwordmanager.app",
+    "productName": "Password Manager",
+    "icon": "assets/icon.png",
+    "mac": {
+      "category": "public.app-category.utilities"
+    },
+    "dmg": {
+      "title": "Password Manager"
+    }
+  },
+  "devDependencies": {
+    "canvas": "^3.2.1",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.4.0"
+  },
+  "dependencies": {
+    "electron-store": "^11.0.2",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  }
+}
