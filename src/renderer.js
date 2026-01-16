@@ -333,7 +333,7 @@ function App() {
   const [showForm, setShowForm] = React.useState(false);
   const [activeCategory, setActiveCategory] = React.useState('passwords');
   const [formType, setFormType] = React.useState('password');
-  const [selectedItem, setSelectedItem] = React.useState(null);
+  const [selectedItems, setSelectedItems] = React.useState(new Set());
   const [passwordForm, setPasswordForm] = React.useState({ site: '', username: '', password: '', tags: [] });
   const [cardForm, setCardForm] = React.useState({ name: '', cardNumber: '', expiry: '', cvv: '', cardHolder: '', tags: [] });
   const [error, setError] = React.useState('');
@@ -506,18 +506,33 @@ function App() {
     const success = await window.electronAPI.deletePassword(masterPassword, id);
     if (success) {
       setItems(items.filter(p => p.id !== id));
-      if (selectedItem && selectedItem.id === id) {
-        setSelectedItem(null);
+      if (selectedItems.has(id)) {
+        setSelectedItems(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     }
   };
 
   const handleContextMenu = (e, item) => {
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, item });
+    // If right-clicked item is already selected, use all selected items
+    // Otherwise, select only the right-clicked item
+    let contextItems;
+    if (selectedItems.has(item.id)) {
+      contextItems = Array.from(selectedItems).map(id => items.find(i => i.id === id)).filter(Boolean);
+    } else {
+      setSelectedItems(new Set([item.id]));
+      contextItems = [item];
+    }
+    setContextMenu({ x: e.clientX, y: e.clientY, items: contextItems });
   };
 
-  const handleDuplicate = async (item) => {
+  const handleDuplicate = async () => {
+    if (!contextMenu || contextMenu.items.length === 0) return;
+    const item = contextMenu.items[0]; // Duplicate first selected item
     const now = Date.now();
     const duplicateData = {
       ...item,
@@ -533,16 +548,29 @@ function App() {
     if (id) {
       const newItem = { ...duplicateData, id };
       setItems([...items, newItem]);
-      setSelectedItem(newItem);
+      setSelectedItems(new Set([id]));
       setImportStatus('Entry duplicated');
       setTimeout(() => setImportStatus(''), 1500);
     }
     setContextMenu(null);
   };
 
-  const handleContextDelete = async (item) => {
-    if (confirm(`Delete "${item.type === 'card' ? item.name : item.site}"?`)) {
-      await handleDelete(item.id);
+  const handleContextDelete = async () => {
+    if (!contextMenu || contextMenu.items.length === 0) return;
+    const count = contextMenu.items.length;
+    const message = count === 1
+      ? `Delete "${contextMenu.items[0].type === 'card' ? contextMenu.items[0].name : contextMenu.items[0].site}"?`
+      : `Delete ${count} items?`;
+
+    if (confirm(message)) {
+      for (const item of contextMenu.items) {
+        await window.electronAPI.deletePassword(masterPassword, item.id);
+      }
+      const deletedIds = new Set(contextMenu.items.map(i => i.id));
+      setItems(items.filter(i => !deletedIds.has(i.id)));
+      setSelectedItems(new Set());
+      setImportStatus(count === 1 ? 'Entry deleted' : `${count} entries deleted`);
+      setTimeout(() => setImportStatus(''), 1500);
     }
     setContextMenu(null);
   };
@@ -654,6 +682,15 @@ function App() {
   // Legacy allTags for backwards compatibility
   const allTags = tagsWithCounts.map(t => t.tag);
 
+  // Get the single selected item for detail view (only when exactly one selected)
+  const selectedItem = React.useMemo(() => {
+    if (selectedItems.size === 1) {
+      const id = Array.from(selectedItems)[0];
+      return items.find(i => i.id === id) || null;
+    }
+    return null;
+  }, [selectedItems, items]);
+
   // Limit displayed items for performance
   const displayedItems = sortedItems.slice(0, displayLimit);
   const hasMore = sortedItems.length > displayLimit;
@@ -739,7 +776,7 @@ function App() {
     const result = await window.electronAPI.clearVault(masterPassword);
     if (result.success) {
       setItems([]);
-      setSelectedItem(null);
+      setSelectedItems(new Set());
       setImportStatus('Vault cleared');
       setTimeout(() => setImportStatus(''), 3000);
     } else {
@@ -898,7 +935,7 @@ function App() {
     if (success) {
       const updatedItem = { ...updatedData, id: editingItem.id };
       setItems(items.map(i => i.id === editingItem.id ? updatedItem : i));
-      setSelectedItem(updatedItem);
+      setSelectedItems(new Set([editingItem.id]));
       setEditingItem(null);
       setEditForm(null);
       setImportStatus('Changes saved');
@@ -980,15 +1017,30 @@ function App() {
     );
   }
 
-  // Helper to select an item
-  const handleSelectItem = (item) => {
-    setSelectedItem(item);
+  // Helper to select an item (supports multi-select with Cmd/Ctrl)
+  const handleSelectItem = (item, e) => {
     setShowForm(false);
+
+    if (e && (e.metaKey || e.ctrlKey)) {
+      // Cmd/Ctrl+click: toggle selection
+      setSelectedItems(prev => {
+        const next = new Set(prev);
+        if (next.has(item.id)) {
+          next.delete(item.id);
+        } else {
+          next.add(item.id);
+        }
+        return next;
+      });
+    } else {
+      // Regular click: single select
+      setSelectedItems(new Set([item.id]));
+    }
   };
 
   // Helper to start adding new item
   const handleAddNew = () => {
-    setSelectedItem(null);
+    setSelectedItems(new Set());
     setShowForm(true);
     setFormType(activeCategory === 'cards' ? 'card' : 'password');
   };
@@ -1003,11 +1055,11 @@ function App() {
       h('nav', { className: 'sidebar-nav' },
         h('button', {
           className: activeCategory === 'passwords' ? 'nav-item active' : 'nav-item',
-          onClick: () => { setActiveCategory('passwords'); setSelectedItem(null); setShowForm(false); setDisplayLimit(50); }
+          onClick: () => { setActiveCategory('passwords'); setSelectedItems(new Set()); setShowForm(false); setDisplayLimit(50); }
         }, 'Passwords'),
         h('button', {
           className: activeCategory === 'cards' ? 'nav-item active' : 'nav-item',
-          onClick: () => { setActiveCategory('cards'); setSelectedItem(null); setShowForm(false); setDisplayLimit(50); }
+          onClick: () => { setActiveCategory('cards'); setSelectedItems(new Set()); setShowForm(false); setDisplayLimit(50); }
         }, 'Credit Cards')
       ),
 
@@ -1083,8 +1135,8 @@ function App() {
             ...displayedItems.map(item =>
               h('div', {
                 key: item.id,
-                className: `list-item ${selectedItem && selectedItem.id === item.id ? 'selected' : ''}`,
-                onClick: () => handleSelectItem(item),
+                className: `list-item ${selectedItems && selectedItems.has(item.id) ? 'selected' : ''}`,
+                onClick: (e) => handleSelectItem(item, e),
                 onContextMenu: (e) => handleContextMenu(e, item)
               },
                 h(ItemIcon, {
@@ -1433,7 +1485,7 @@ function App() {
               )
             ),
             h('div', { className: 'detail-actions' },
-              h('button', { className: 'btn-delete', onClick: () => { handleDelete(selectedItem.id); setSelectedItem(null); } }, 'Delete')
+              h('button', { className: 'btn-delete', onClick: () => { handleDelete(selectedItem.id); setSelectedItems(new Set()); } }, 'Delete')
             )
           ) : h('div', { className: 'detail-content' },
             h('div', { className: 'detail-header' },
@@ -1475,9 +1527,16 @@ function App() {
               )
             ),
             h('div', { className: 'detail-actions' },
-              h('button', { className: 'btn-delete', onClick: () => { handleDelete(selectedItem.id); setSelectedItem(null); } }, 'Delete')
+              h('button', { className: 'btn-delete', onClick: () => { handleDelete(selectedItem.id); setSelectedItems(new Set()); } }, 'Delete')
             )
           )
+        )
+      ) : (selectedItems && selectedItems.size > 1) ? (
+        // Multi-select state
+        h('div', { className: 'detail-empty' },
+          h('p', null, `${selectedItems.size} items selected`),
+          h('p', { className: 'detail-empty-hint' }, 'Right-click to delete selected items'),
+          h('p', { className: 'detail-empty-hint' }, 'Cmd+click to toggle selection')
         )
       ) : (
         // Empty state
@@ -1493,14 +1552,14 @@ function App() {
       className: 'context-menu',
       style: { left: contextMenu.x, top: contextMenu.y }
     },
-      h('button', {
+      contextMenu.items.length === 1 && h('button', {
         className: 'context-menu-item',
-        onClick: () => handleDuplicate(contextMenu.item)
+        onClick: handleDuplicate
       }, 'Duplicate...'),
       h('button', {
         className: 'context-menu-item context-menu-item-danger',
-        onClick: () => handleContextDelete(contextMenu.item)
-      }, 'Delete')
+        onClick: handleContextDelete
+      }, contextMenu.items.length === 1 ? 'Delete' : `Delete ${contextMenu.items.length} items`)
     )
   );
 }
