@@ -37,6 +37,7 @@ function App() {
   });
   const [generatedPassword, setGeneratedPassword] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [importStatus, setImportStatus] = React.useState('');
 
   React.useEffect(() => {
     checkVault();
@@ -120,6 +121,21 @@ function App() {
     return p.site.toLowerCase().includes(query) || p.username.toLowerCase().includes(query);
   });
 
+  const handleImport = async () => {
+    setImportStatus('Importing...');
+    const result = await window.electronAPI.importPasswords(masterPassword);
+    if (result.canceled) {
+      setImportStatus('');
+    } else if (result.success) {
+      setPasswords([...passwords, ...result.passwords]);
+      setImportStatus(`Imported ${result.count} passwords`);
+      setTimeout(() => setImportStatus(''), 3000);
+    } else {
+      setImportStatus(result.error || 'Import failed');
+      setTimeout(() => setImportStatus(''), 3000);
+    }
+  };
+
   if (screen === 'loading') {
     return h('div', { className: 'container center' },
       h('p', null, 'Loading...')
@@ -176,9 +192,11 @@ function App() {
         h('button', { className: 'btn-primary', onClick: () => setShowForm(!showForm) },
           showForm ? 'Cancel' : 'Add Password'
         ),
+        h('button', { className: 'btn-secondary', onClick: handleImport }, 'Import'),
         h('button', { className: 'btn-secondary', onClick: handleLock }, 'Lock')
       )
     ),
+    importStatus && h('div', { className: 'import-status' }, importStatus),
     showForm && h('form', { className: 'password-form', onSubmit: handleAddPassword },
       h('input', {
         type: 'text',

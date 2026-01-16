@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const Store = require('electron-store').default;
 
@@ -125,6 +126,95 @@ ipcMain.handle('delete-password', (event, { masterPassword, id }) => {
     return true;
   } catch {
     return false;
+  }
+});
+
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter(line => line.trim());
+  if (lines.length < 2) return [];
+
+  const parseRow = (row) => {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < row.length; i++) {
+      const char = row[i];
+      if (char === '"') {
+        if (inQuotes && row[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current);
+    return result;
+  };
+
+  const headers = parseRow(lines[0]).map(h => h.toLowerCase().trim());
+  const passwords = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseRow(lines[i]);
+    const entry = {};
+    headers.forEach((header, idx) => {
+      entry[header] = values[idx] || '';
+    });
+
+    // Map common CSV column names to our format
+    const site = entry.url || entry.website || entry.name || entry.title || entry.hostname || '';
+    const username = entry.username || entry.login || entry.email || entry.user || '';
+    const password = entry.password || entry.pass || '';
+
+    if (site && password) {
+      passwords.push({ site, username, password });
+    }
+  }
+
+  return passwords;
+}
+
+ipcMain.handle('import-passwords', async (event, masterPassword) => {
+  try {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'CSV Files', extensions: ['csv'] }]
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, count: 0, canceled: true };
+    }
+
+    const filePath = result.filePaths[0];
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const passwords = parseCSV(content);
+
+    if (passwords.length === 0) {
+      return { success: false, count: 0, error: 'No valid passwords found in file' };
+    }
+
+    const vault = store.get('vault') || [];
+    const imported = [];
+
+    for (const pwd of passwords) {
+      const entry = {
+        id: Date.now() + Math.random(),
+        data: encrypt(JSON.stringify(pwd), masterPassword)
+      };
+      vault.push(entry);
+      imported.push({ ...pwd, id: entry.id });
+    }
+
+    store.set('vault', vault);
+    return { success: true, count: imported.length, passwords: imported };
+  } catch (err) {
+    return { success: false, count: 0, error: err.message };
   }
 });
 
