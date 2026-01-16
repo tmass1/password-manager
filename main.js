@@ -14,8 +14,58 @@ const SALT_LENGTH = 32;
 const TAG_LENGTH = 16;
 const ITERATIONS = 100000;
 
+// Key cache for performance with many items
+const keyCache = new Map();
+
 function deriveKey(password, salt) {
-  return crypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LENGTH, 'sha512');
+  const cacheKey = password + ':' + salt.toString('hex');
+  if (keyCache.has(cacheKey)) {
+    return keyCache.get(cacheKey);
+  }
+  const key = crypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LENGTH, 'sha512');
+  keyCache.set(cacheKey, key);
+  // Limit cache size
+  if (keyCache.size > 100) {
+    const firstKey = keyCache.keys().next().value;
+    keyCache.delete(firstKey);
+  }
+  return key;
+}
+
+// Async key derivation for bulk operations
+function deriveKeyAsync(password, salt) {
+  return new Promise((resolve, reject) => {
+    const cacheKey = password + ':' + salt.toString('hex');
+    if (keyCache.has(cacheKey)) {
+      return resolve(keyCache.get(cacheKey));
+    }
+    crypto.pbkdf2(password, salt, ITERATIONS, KEY_LENGTH, 'sha512', (err, key) => {
+      if (err) return reject(err);
+      keyCache.set(cacheKey, key);
+      if (keyCache.size > 5000) {
+        const firstKey = keyCache.keys().next().value;
+        keyCache.delete(firstKey);
+      }
+      resolve(key);
+    });
+  });
+}
+
+// Async decrypt for bulk operations
+async function decryptAsync(encryptedData, masterPassword) {
+  const { encrypted, iv, salt, tag } = encryptedData;
+  const key = await deriveKeyAsync(masterPassword, Buffer.from(salt, 'hex'));
+
+  const decipher = crypto.createDecipheriv(
+    ALGORITHM,
+    key,
+    Buffer.from(iv, 'hex')
+  );
+  decipher.setAuthTag(Buffer.from(tag, 'hex'));
+
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
 }
 
 function encrypt(text, masterPassword) {
@@ -54,8 +104,10 @@ function decrypt(encryptedData, masterPassword) {
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1000,
+    height: 700,
+    minWidth: 800,
+    minHeight: 500,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -88,18 +140,50 @@ ipcMain.handle('unlock-vault', (event, masterPassword) => {
   }
 });
 
-ipcMain.handle('get-passwords', (event, masterPassword) => {
+ipcMain.handle('get-passwords', async (event, masterPassword) => {
   try {
     const encryptedVault = store.get('vault');
     if (!encryptedVault || encryptedVault.length === 0) {
-      return [];
+      return { items: [], total: 0 };
     }
-    return encryptedVault.map(item => {
-      const decrypted = decrypt(item.data, masterPassword);
-      return { id: item.id, ...JSON.parse(decrypted) };
-    });
+
+    // Return immediately with total count, items will stream via separate channel
+    const total = encryptedVault.length;
+
+    // Start async decryption in background
+    (async () => {
+      const batchSize = 10;
+      for (let i = 0; i < encryptedVault.length; i += batchSize) {
+        const batch = encryptedVault.slice(i, i + batchSize);
+
+        const batchResults = await Promise.all(
+          batch.map(async (item) => {
+            try {
+              const decrypted = await decryptAsync(item.data, masterPassword);
+              return { id: item.id, ...JSON.parse(decrypted) };
+            } catch (e) {
+              return null;
+            }
+          })
+        );
+
+        const validResults = batchResults.filter(Boolean);
+        if (validResults.length > 0) {
+          // Send batch to renderer
+          event.sender.send('passwords-batch', validResults);
+        }
+
+        // Small yield
+        await new Promise(resolve => setTimeout(resolve, 1));
+      }
+
+      // Signal completion
+      event.sender.send('passwords-complete');
+    })();
+
+    return { items: [], total };
   } catch {
-    return [];
+    return { items: [], total: 0 };
   }
 });
 
@@ -123,6 +207,23 @@ ipcMain.handle('delete-password', (event, { masterPassword, id }) => {
     const vault = store.get('vault') || [];
     const filtered = vault.filter(item => item.id !== id);
     store.set('vault', filtered);
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle('update-password', (event, { masterPassword, id, password }) => {
+  try {
+    const vault = store.get('vault') || [];
+    const index = vault.findIndex(item => item.id === id);
+    if (index === -1) return false;
+
+    vault[index] = {
+      id,
+      data: encrypt(JSON.stringify(password), masterPassword)
+    };
+    store.set('vault', vault);
     return true;
   } catch {
     return false;
