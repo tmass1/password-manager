@@ -6,6 +6,9 @@ const Store = require('electron-store').default;
 
 const store = new Store();
 
+// Cache file path
+const getCachePath = () => path.join(app.getPath('userData'), 'vault-cache.enc');
+
 // Encryption settings
 const ALGORITHM = 'aes-256-gcm';
 const KEY_LENGTH = 32;
@@ -102,6 +105,107 @@ function decrypt(encryptedData, masterPassword) {
   return decrypted;
 }
 
+// ========== Secure Cache System ==========
+// Uses safeStorage (OS keychain) to store a session key for fast cache decryption
+
+function generateSessionKey() {
+  return crypto.randomBytes(KEY_LENGTH);
+}
+
+function encryptCache(data, sessionKey) {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(ALGORITHM, sessionKey, iv);
+  let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const tag = cipher.getAuthTag();
+  return { encrypted, iv: iv.toString('hex'), tag: tag.toString('hex') };
+}
+
+function decryptCache(cacheData, sessionKey) {
+  const { encrypted, iv, tag } = cacheData;
+  const decipher = crypto.createDecipheriv(ALGORITHM, sessionKey, Buffer.from(iv, 'hex'));
+  decipher.setAuthTag(Buffer.from(tag, 'hex'));
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return JSON.parse(decrypted);
+}
+
+function saveCache(decryptedItems) {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return false;
+
+    // Generate a new session key
+    const sessionKey = generateSessionKey();
+
+    // Encrypt the cache with the session key
+    const vaultVersion = store.get('vaultVersion') || 0;
+    const cacheData = encryptCache({ items: decryptedItems, version: vaultVersion }, sessionKey);
+
+    // Store session key securely in OS keychain
+    const encryptedKey = safeStorage.encryptString(sessionKey.toString('base64'));
+    store.set('cacheSessionKey', encryptedKey.toString('base64'));
+
+    // Write cache to disk
+    fs.writeFileSync(getCachePath(), JSON.stringify(cacheData), 'utf8');
+    return true;
+  } catch (e) {
+    console.error('Failed to save cache:', e);
+    return false;
+  }
+}
+
+function loadCache() {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return null;
+
+    const cachePath = getCachePath();
+    if (!fs.existsSync(cachePath)) return null;
+
+    // Get session key from OS keychain
+    const encryptedKeyBase64 = store.get('cacheSessionKey');
+    if (!encryptedKeyBase64) return null;
+
+    const encryptedKey = Buffer.from(encryptedKeyBase64, 'base64');
+    const sessionKeyBase64 = safeStorage.decryptString(encryptedKey);
+    const sessionKey = Buffer.from(sessionKeyBase64, 'base64');
+
+    // Read and decrypt cache
+    const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    const cache = decryptCache(cacheData, sessionKey);
+
+    // Verify cache version matches vault version
+    const vaultVersion = store.get('vaultVersion') || 0;
+    if (cache.version !== vaultVersion) {
+      invalidateCache();
+      return null;
+    }
+
+    return cache.items;
+  } catch (e) {
+    console.error('Failed to load cache:', e);
+    invalidateCache();
+    return null;
+  }
+}
+
+function invalidateCache() {
+  try {
+    const cachePath = getCachePath();
+    if (fs.existsSync(cachePath)) {
+      fs.unlinkSync(cachePath);
+    }
+    store.delete('cacheSessionKey');
+  } catch (e) {
+    console.error('Failed to invalidate cache:', e);
+  }
+}
+
+function incrementVaultVersion() {
+  const version = (store.get('vaultVersion') || 0) + 1;
+  store.set('vaultVersion', version);
+  invalidateCache();
+}
+
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1000,
@@ -147,12 +251,22 @@ ipcMain.handle('get-passwords', async (event, masterPassword) => {
       return { items: [], total: 0 };
     }
 
-    // Return immediately with total count, items will stream via separate channel
     const total = encryptedVault.length;
 
-    // Start async decryption in background
+    // Try to load from secure cache first
+    const cachedItems = loadCache();
+    if (cachedItems && cachedItems.length === total) {
+      // Cache hit - send all items immediately
+      event.sender.send('passwords-batch', cachedItems);
+      event.sender.send('passwords-complete');
+      return { items: [], total, cached: true };
+    }
+
+    // Cache miss - decrypt and rebuild cache
     (async () => {
+      const allDecrypted = [];
       const batchSize = 10;
+
       for (let i = 0; i < encryptedVault.length; i += batchSize) {
         const batch = encryptedVault.slice(i, i + batchSize);
 
@@ -168,16 +282,18 @@ ipcMain.handle('get-passwords', async (event, masterPassword) => {
         );
 
         const validResults = batchResults.filter(Boolean);
+        allDecrypted.push(...validResults);
+
         if (validResults.length > 0) {
-          // Send batch to renderer
           event.sender.send('passwords-batch', validResults);
         }
 
-        // Small yield
         await new Promise(resolve => setTimeout(resolve, 1));
       }
 
-      // Signal completion
+      // Save to secure cache for next time
+      saveCache(allDecrypted);
+
       event.sender.send('passwords-complete');
     })();
 
@@ -196,6 +312,7 @@ ipcMain.handle('save-password', (event, { masterPassword, password }) => {
     };
     vault.push(entry);
     store.set('vault', vault);
+    incrementVaultVersion();
     return entry.id;
   } catch {
     return null;
@@ -207,6 +324,7 @@ ipcMain.handle('delete-password', (event, { masterPassword, id }) => {
     const vault = store.get('vault') || [];
     const filtered = vault.filter(item => item.id !== id);
     store.set('vault', filtered);
+    incrementVaultVersion();
     return true;
   } catch {
     return false;
@@ -224,6 +342,7 @@ ipcMain.handle('update-password', (event, { masterPassword, id, password }) => {
       data: encrypt(JSON.stringify(password), masterPassword)
     };
     store.set('vault', vault);
+    incrementVaultVersion();
     return true;
   } catch {
     return false;
@@ -334,6 +453,7 @@ ipcMain.handle('import-passwords', async (event, masterPassword) => {
       }
 
       store.set('vault', vault);
+      incrementVaultVersion();
       event.sender.send('import-complete', { count: total });
     })();
 
@@ -395,6 +515,7 @@ ipcMain.handle('clear-vault', (event, masterPassword) => {
     }
 
     store.set('vault', []);
+    incrementVaultVersion();
     return { success: true };
   } catch {
     return { success: false, error: 'Failed to clear vault' };
