@@ -38,14 +38,26 @@ function App() {
   const [generatedPassword, setGeneratedPassword] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [importStatus, setImportStatus] = React.useState('');
+  const [touchIdAvailable, setTouchIdAvailable] = React.useState(false);
+  const [touchIdEnabled, setTouchIdEnabled] = React.useState(false);
 
   React.useEffect(() => {
     checkVault();
+    checkTouchId();
   }, []);
 
   const checkVault = async () => {
     const exists = await window.electronAPI.checkVaultExists();
     setScreen(exists ? 'unlock' : 'setup');
+  };
+
+  const checkTouchId = async () => {
+    const available = await window.electronAPI.checkTouchIdAvailable();
+    setTouchIdAvailable(available);
+    if (available) {
+      const enabled = await window.electronAPI.checkTouchIdEnabled();
+      setTouchIdEnabled(enabled);
+    }
   };
 
   const handleSetup = async (e) => {
@@ -150,6 +162,40 @@ function App() {
     }
   };
 
+  const handleTouchIdUnlock = async () => {
+    setError('');
+    const result = await window.electronAPI.unlockWithTouchId();
+    if (result.success) {
+      setMasterPassword(result.masterPassword);
+      const saved = await window.electronAPI.getPasswords(result.masterPassword);
+      setPasswords(saved);
+      setScreen('vault');
+    } else {
+      setError(result.error || 'Touch ID failed');
+    }
+  };
+
+  const handleEnableTouchId = async () => {
+    const result = await window.electronAPI.enableTouchId(masterPassword);
+    if (result.success) {
+      setTouchIdEnabled(true);
+      setImportStatus('Touch ID enabled');
+      setTimeout(() => setImportStatus(''), 3000);
+    } else {
+      setImportStatus(result.error || 'Failed to enable Touch ID');
+      setTimeout(() => setImportStatus(''), 3000);
+    }
+  };
+
+  const handleDisableTouchId = async () => {
+    const result = await window.electronAPI.disableTouchId();
+    if (result.success) {
+      setTouchIdEnabled(false);
+      setImportStatus('Touch ID disabled');
+      setTimeout(() => setImportStatus(''), 3000);
+    }
+  };
+
   if (screen === 'loading') {
     return h('div', { className: 'container center' },
       h('p', null, 'Loading...')
@@ -185,6 +231,12 @@ function App() {
     return h('div', { className: 'container center' },
       h('div', { className: 'auth-box' },
         h('h1', null, 'Unlock Vault'),
+        touchIdEnabled && h('button', {
+          type: 'button',
+          className: 'btn-touchid',
+          onClick: handleTouchIdUnlock
+        }, 'Unlock with Touch ID'),
+        touchIdEnabled && h('div', { className: 'divider' }, h('span', null, 'or')),
         h('form', { onSubmit: handleUnlock },
           h('input', {
             type: 'password',
@@ -208,6 +260,10 @@ function App() {
         ),
         h('button', { className: 'btn-secondary', onClick: handleImport }, 'Import'),
         h('button', { className: 'btn-secondary', onClick: handleExport }, 'Export'),
+        touchIdAvailable && h('button', {
+          className: touchIdEnabled ? 'btn-touchid-enabled' : 'btn-secondary',
+          onClick: touchIdEnabled ? handleDisableTouchId : handleEnableTouchId
+        }, touchIdEnabled ? 'Touch ID On' : 'Touch ID'),
         h('button', { className: 'btn-secondary', onClick: handleLock }, 'Lock')
       )
     ),

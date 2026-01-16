@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, systemPreferences, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -254,6 +254,67 @@ ipcMain.handle('export-passwords', async (event, masterPassword) => {
 
     fs.writeFileSync(result.filePath, csv, 'utf-8');
     return { success: true, count: passwords.length };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Touch ID handlers
+ipcMain.handle('check-touch-id-available', () => {
+  if (process.platform !== 'darwin') return false;
+  return systemPreferences.canPromptTouchID();
+});
+
+ipcMain.handle('check-touch-id-enabled', () => {
+  return store.has('touchIdEnabled') && store.get('touchIdEnabled') === true;
+});
+
+ipcMain.handle('enable-touch-id', async (event, masterPassword) => {
+  try {
+    if (!systemPreferences.canPromptTouchID()) {
+      return { success: false, error: 'Touch ID not available' };
+    }
+
+    await systemPreferences.promptTouchID('enable Touch ID for Password Manager');
+
+    // Encrypt and store the master password using safeStorage
+    const encrypted = safeStorage.encryptString(masterPassword);
+    store.set('touchIdPassword', encrypted.toString('base64'));
+    store.set('touchIdEnabled', true);
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('disable-touch-id', () => {
+  store.delete('touchIdPassword');
+  store.set('touchIdEnabled', false);
+  return { success: true };
+});
+
+ipcMain.handle('unlock-with-touch-id', async () => {
+  try {
+    if (!store.get('touchIdEnabled')) {
+      return { success: false, error: 'Touch ID not enabled' };
+    }
+
+    await systemPreferences.promptTouchID('unlock Password Manager');
+
+    // Retrieve and decrypt the master password
+    const encryptedBase64 = store.get('touchIdPassword');
+    const encrypted = Buffer.from(encryptedBase64, 'base64');
+    const masterPassword = safeStorage.decryptString(encrypted);
+
+    // Verify the password works
+    const checkData = store.get('vaultCheck');
+    const result = decrypt(checkData, masterPassword);
+    if (result !== 'vault-check') {
+      return { success: false, error: 'Stored password invalid' };
+    }
+
+    return { success: true, masterPassword };
   } catch (err) {
     return { success: false, error: err.message };
   }
