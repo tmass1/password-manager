@@ -136,6 +136,20 @@ function App() {
     }
   };
 
+  const handleExport = async () => {
+    setImportStatus('Exporting...');
+    const result = await window.electronAPI.exportPasswords(masterPassword);
+    if (result.canceled) {
+      setImportStatus('');
+    } else if (result.success) {
+      setImportStatus(`Exported ${result.count} passwords`);
+      setTimeout(() => setImportStatus(''), 3000);
+    } else {
+      setImportStatus(result.error || 'Export failed');
+      setTimeout(() => setImportStatus(''), 3000);
+    }
+  };
+
   if (screen === 'loading') {
     return h('div', { className: 'container center' },
       h('p', null, 'Loading...')
@@ -193,6 +207,7 @@ function App() {
           showForm ? 'Cancel' : 'Add Password'
         ),
         h('button', { className: 'btn-secondary', onClick: handleImport }, 'Import'),
+        h('button', { className: 'btn-secondary', onClick: handleExport }, 'Export'),
         h('button', { className: 'btn-secondary', onClick: handleLock }, 'Lock')
       )
     ),

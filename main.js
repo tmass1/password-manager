@@ -218,6 +218,47 @@ ipcMain.handle('import-passwords', async (event, masterPassword) => {
   }
 });
 
+ipcMain.handle('export-passwords', async (event, masterPassword) => {
+  try {
+    const encryptedVault = store.get('vault');
+    if (!encryptedVault || encryptedVault.length === 0) {
+      return { success: false, error: 'No passwords to export' };
+    }
+
+    const passwords = encryptedVault.map(item => {
+      const decrypted = decrypt(item.data, masterPassword);
+      return JSON.parse(decrypted);
+    });
+
+    const result = await dialog.showSaveDialog({
+      defaultPath: 'passwords.csv',
+      filters: [{ name: 'CSV Files', extensions: ['csv'] }]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    const escapeCSV = (str) => {
+      if (!str) return '';
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+
+    let csv = 'url,username,password\n';
+    for (const pwd of passwords) {
+      csv += `${escapeCSV(pwd.site)},${escapeCSV(pwd.username)},${escapeCSV(pwd.password)}\n`;
+    }
+
+    fs.writeFileSync(result.filePath, csv, 'utf-8');
+    return { success: true, count: passwords.length };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
 
