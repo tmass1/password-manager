@@ -6,6 +6,12 @@ const Store = require('electron-store').default;
 
 const store = new Store();
 
+// Development mode check - avoids Keychain prompts for caching during development
+const isDev = !app.isPackaged;
+
+// In-memory session key for dev mode (not persisted, cleared on restart)
+let devSessionKey = null;
+
 // Cache file path
 const getCachePath = () => path.join(app.getPath('userData'), 'vault-cache.enc');
 
@@ -132,8 +138,6 @@ function decryptCache(cacheData, sessionKey) {
 
 function saveCache(decryptedItems) {
   try {
-    if (!safeStorage.isEncryptionAvailable()) return false;
-
     // Generate a new session key
     const sessionKey = generateSessionKey();
 
@@ -141,9 +145,16 @@ function saveCache(decryptedItems) {
     const vaultVersion = store.get('vaultVersion') || 0;
     const cacheData = encryptCache({ items: decryptedItems, version: vaultVersion }, sessionKey);
 
-    // Store session key securely in OS keychain
-    const encryptedKey = safeStorage.encryptString(sessionKey.toString('base64'));
-    store.set('cacheSessionKey', encryptedKey.toString('base64'));
+    if (isDev) {
+      // Dev mode: store session key in memory (no Keychain prompt)
+      devSessionKey = sessionKey;
+      console.log('[Dev Mode] Cache saved with in-memory session key');
+    } else {
+      // Production: store session key securely in OS keychain
+      if (!safeStorage.isEncryptionAvailable()) return false;
+      const encryptedKey = safeStorage.encryptString(sessionKey.toString('base64'));
+      store.set('cacheSessionKey', encryptedKey.toString('base64'));
+    }
 
     // Write cache to disk
     fs.writeFileSync(getCachePath(), JSON.stringify(cacheData), 'utf8');
@@ -156,18 +167,30 @@ function saveCache(decryptedItems) {
 
 function loadCache() {
   try {
-    if (!safeStorage.isEncryptionAvailable()) return null;
-
     const cachePath = getCachePath();
     if (!fs.existsSync(cachePath)) return null;
 
-    // Get session key from OS keychain
-    const encryptedKeyBase64 = store.get('cacheSessionKey');
-    if (!encryptedKeyBase64) return null;
+    let sessionKey;
 
-    const encryptedKey = Buffer.from(encryptedKeyBase64, 'base64');
-    const sessionKeyBase64 = safeStorage.decryptString(encryptedKey);
-    const sessionKey = Buffer.from(sessionKeyBase64, 'base64');
+    if (isDev) {
+      // Dev mode: use in-memory session key
+      if (!devSessionKey) {
+        console.log('[Dev Mode] No in-memory session key, cache miss');
+        return null;
+      }
+      sessionKey = devSessionKey;
+      console.log('[Dev Mode] Loading cache with in-memory session key');
+    } else {
+      // Production: get session key from OS keychain
+      if (!safeStorage.isEncryptionAvailable()) return null;
+
+      const encryptedKeyBase64 = store.get('cacheSessionKey');
+      if (!encryptedKeyBase64) return null;
+
+      const encryptedKey = Buffer.from(encryptedKeyBase64, 'base64');
+      const sessionKeyBase64 = safeStorage.decryptString(encryptedKey);
+      sessionKey = Buffer.from(sessionKeyBase64, 'base64');
+    }
 
     // Read and decrypt cache
     const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
@@ -195,6 +218,7 @@ function invalidateCache() {
       fs.unlinkSync(cachePath);
     }
     store.delete('cacheSessionKey');
+    devSessionKey = null; // Clear in-memory key for dev mode
   } catch (e) {
     console.error('Failed to invalidate cache:', e);
   }
