@@ -1296,9 +1296,6 @@ function App() {
                   h('strong', null, item.type === 'card' ? item.name : item.site),
                   h('span', null, item.type === 'card' ? '•••• ' + (item.cardNumber || '').slice(-4) : item.username)
                 ),
-                (item.tags && item.tags.length > 0) && h('div', { className: 'list-item-tags' },
-                  item.tags.slice(0, 2).map(tag => h('span', { key: tag, className: 'tag-mini' }, tag))
-                ),
                 h('button', {
                   className: `favorite-btn ${item.isFavorite ? 'active' : ''}`,
                   onClick: (e) => { e.stopPropagation(); handleToggleFavorite(item); },
