@@ -1093,30 +1093,20 @@ function App() {
             ? `Decrypting ${loadingCount} of ${loadingTotal} items...`
             : 'Decrypting vault...'
         ) : [
-          touchIdEnabled && h('button', {
-            key: 'touchid',
-            type: 'button',
-            className: 'btn-touchid-icon',
-            onClick: handleTouchIdUnlock,
-            title: 'Unlock with Touch ID'
-          },
-            h('svg', {
-              viewBox: '0 0 24 24',
-              width: '48',
-              height: '48',
-              fill: 'none',
-              stroke: 'currentColor',
-              strokeWidth: '1.5',
-              strokeLinecap: 'round'
+          touchIdEnabled && h('div', { key: 'touchid-wrapper', className: 'touchid-wrapper' },
+            h('button', {
+              type: 'button',
+              className: 'btn-touchid-icon',
+              onClick: handleTouchIdUnlock,
+              title: 'Unlock with Touch ID'
             },
-              // Touch ID fingerprint icon paths
-              h('path', { d: 'M12 2C8.5 2 6 4.5 6 8v2' }),
-              h('path', { d: 'M18 10V8c0-3.5-2.5-6-6-6' }),
-              h('path', { d: 'M6 12v4c0 3.5 2.5 6 6 6' }),
-              h('path', { d: 'M18 12v4c0 3.5-2.5 6-6 6' }),
-              h('path', { d: 'M12 6c-2 0-3 1.5-3 4v4c0 2.5 1 4 3 4' }),
-              h('path', { d: 'M12 6c2 0 3 1.5 3 4v4c0 2.5-1 4-3 4' }),
-              h('path', { d: 'M12 10v4' })
+              h('img', {
+                src: './assets/touchid.png',
+                alt: 'Touch ID',
+                width: '64',
+                height: '64',
+                className: 'touchid-img'
+              })
             )
           ),
           touchIdEnabled && h('div', { key: 'divider', className: 'divider' }, h('span', null, 'or')),

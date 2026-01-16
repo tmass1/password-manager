@@ -1039,6 +1039,12 @@ body::after {
   box-shadow: var(--focus-ring), var(--shadow-glow);
 }
 
+.touchid-wrapper {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
 .btn-touchid-icon {
   background: transparent;
   border: none;
@@ -1054,7 +1060,7 @@ body::after {
 
 .btn-touchid-icon:hover {
   background: var(--accent-bg);
-  transform: scale(1.05);
+  transform: scale(1.08);
 }
 
 .btn-touchid-icon:active {
@@ -1066,8 +1072,13 @@ body::after {
   box-shadow: var(--focus-ring);
 }
 
-.btn-touchid-icon svg {
+.btn-touchid-icon .touchid-img {
   filter: drop-shadow(0 0 8px var(--accent-glow));
+  transition: filter var(--transition-normal);
+}
+
+.btn-touchid-icon:hover .touchid-img {
+  filter: drop-shadow(0 0 16px var(--accent-glow));
 }
 
 /* ========== Tags ========== */
