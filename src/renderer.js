@@ -332,9 +332,10 @@ function App() {
   const [items, setItems] = React.useState([]);
   const [showForm, setShowForm] = React.useState(false);
   const [activeCategory, setActiveCategory] = React.useState('passwords');
+  const [showSettings, setShowSettings] = React.useState(false);
   const [formType, setFormType] = React.useState('password');
   const [selectedItems, setSelectedItems] = React.useState(new Set());
-  const [passwordForm, setPasswordForm] = React.useState({ site: '', username: '', password: '', tags: [] });
+  const [passwordForm, setPasswordForm] = React.useState({ site: '', username: '', password: '', websiteUrl: '', tags: [] });
   const [cardForm, setCardForm] = React.useState({ name: '', cardNumber: '', expiry: '', cvv: '', cardHolder: '', tags: [] });
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -466,12 +467,19 @@ function App() {
 
     if (formType === 'password') {
       if (!passwordForm.site || !passwordForm.username || !passwordForm.password) return;
+      // Normalize website URL
+      let websiteUrl = (passwordForm.websiteUrl || '').trim();
+      if (websiteUrl && !websiteUrl.includes('://')) {
+        websiteUrl = 'https://' + websiteUrl;
+      }
       itemData = {
         type: 'password',
         site: passwordForm.site,
         username: passwordForm.username,
         password: passwordForm.password,
+        websiteUrl: websiteUrl || null,
         tags: passwordForm.tags || [],
+        isFavorite: false,
         createdAt: now,
         modifiedAt: now,
         accessCount: 0,
@@ -487,6 +495,7 @@ function App() {
         cvv: cardForm.cvv,
         cardHolder: cardForm.cardHolder,
         tags: cardForm.tags || [],
+        isFavorite: false,
         createdAt: now,
         modifiedAt: now,
         accessCount: 0,
@@ -497,7 +506,7 @@ function App() {
     const id = await window.electronAPI.savePassword(masterPassword, itemData);
     if (id) {
       setItems([...items, { ...itemData, id }]);
-      setPasswordForm({ site: '', username: '', password: '', tags: [] });
+      setPasswordForm({ site: '', username: '', password: '', websiteUrl: '', tags: [] });
       setCardForm({ name: '', cardNumber: '', expiry: '', cvv: '', cardHolder: '', tags: [] });
       setShowForm(false);
     }
@@ -610,11 +619,17 @@ function App() {
   // Memoize expensive computations
   const categoryItems = React.useMemo(() => {
     return items.filter(item => {
+      if (activeCategory === 'favorites') return item.isFavorite === true;
       if (activeCategory === 'passwords') return item.type === 'password' || !item.type;
       if (activeCategory === 'cards') return item.type === 'card';
       return true;
     });
   }, [items, activeCategory]);
+
+  // Count favorites
+  const favoritesCount = React.useMemo(() => {
+    return items.filter(item => item.isFavorite === true).length;
+  }, [items]);
 
   const filteredItems = React.useMemo(() => {
     if (!searchQuery) return categoryItems;
@@ -629,11 +644,12 @@ function App() {
       });
     }
 
-    // Regular search - matches tags and other fields
+    // Regular search - matches tags, website URL, and other fields
     const query = searchQuery.toLowerCase();
     return categoryItems.filter(p => {
       const tags = p.tags || [];
       const matchesTags = tags.some(tag => tag.toLowerCase().includes(query));
+      const matchesWebsite = (p.websiteUrl || '').toLowerCase().includes(query);
       if (p.type === 'card') {
         return (p.name || '').toLowerCase().includes(query) ||
                (p.cardHolder || '').toLowerCase().includes(query) ||
@@ -641,7 +657,8 @@ function App() {
       }
       return (p.site || '').toLowerCase().includes(query) ||
              (p.username || '').toLowerCase().includes(query) ||
-             matchesTags;
+             matchesTags ||
+             matchesWebsite;
     });
   }, [categoryItems, searchQuery]);
 
@@ -883,6 +900,29 @@ function App() {
     setTimeout(() => setImportStatus(''), 1500);
   };
 
+  // Toggle favorite status and persist immediately
+  const handleToggleFavorite = async (item) => {
+    const updatedItem = { ...item, isFavorite: !item.isFavorite, modifiedAt: Date.now() };
+    const success = await window.electronAPI.updatePassword(masterPassword, item.id, updatedItem);
+    if (success) {
+      setItems(items.map(i => i.id === item.id ? updatedItem : i));
+      setImportStatus(updatedItem.isFavorite ? 'Added to favorites' : 'Removed from favorites');
+      setTimeout(() => setImportStatus(''), 1500);
+    }
+  };
+
+  // Open website URL
+  const handleOpenWebsite = (url, item) => {
+    if (!url) return;
+    // Copy username to clipboard for convenience
+    if (item && item.username) {
+      navigator.clipboard.writeText(item.username);
+      setImportStatus('Username copied, opening website...');
+      setTimeout(() => setImportStatus(''), 2000);
+    }
+    window.open(url, '_blank');
+  };
+
   // Edit mode handlers
   const handleStartEdit = (item) => {
     setEditingItem(item);
@@ -900,6 +940,7 @@ function App() {
         site: item.site || '',
         username: item.username || '',
         password: item.password || '',
+        websiteUrl: item.websiteUrl || '',
         tags: [...(item.tags || [])]
       });
     }
@@ -926,6 +967,7 @@ function App() {
         cvv: editForm.cvv,
         cardHolder: editForm.cardHolder,
         tags: editForm.tags,
+        isFavorite: editingItem.isFavorite || false,
         createdAt: editingItem.createdAt,
         modifiedAt: now,
         accessCount: editingItem.accessCount || 0,
@@ -933,12 +975,19 @@ function App() {
       };
     } else {
       if (!editForm.site || !editForm.username || !editForm.password) return;
+      // Normalize website URL
+      let websiteUrl = (editForm.websiteUrl || '').trim();
+      if (websiteUrl && !websiteUrl.includes('://')) {
+        websiteUrl = 'https://' + websiteUrl;
+      }
       updatedData = {
         type: 'password',
         site: editForm.site,
         username: editForm.username,
         password: editForm.password,
+        websiteUrl: websiteUrl || null,
         tags: editForm.tags,
+        isFavorite: editingItem.isFavorite || false,
         createdAt: editingItem.createdAt,
         modifiedAt: now,
         accessCount: editingItem.accessCount || 0,
@@ -1093,12 +1142,22 @@ function App() {
 
       h('nav', { className: 'sidebar-nav' },
         h('button', {
+          className: activeCategory === 'favorites' ? 'nav-item active' : 'nav-item',
+          onClick: () => { setActiveCategory('favorites'); setSelectedItems(new Set()); setShowForm(false); setShowSettings(false); setDisplayLimit(50); }
+        },
+          h('span', { className: 'nav-item-content' },
+            h('span', { className: 'nav-icon star-icon' }, '★'),
+            'Favorites'
+          ),
+          favoritesCount > 0 && h('span', { className: 'nav-item-count' }, favoritesCount)
+        ),
+        h('button', {
           className: activeCategory === 'passwords' ? 'nav-item active' : 'nav-item',
-          onClick: () => { setActiveCategory('passwords'); setSelectedItems(new Set()); setShowForm(false); setDisplayLimit(50); }
+          onClick: () => { setActiveCategory('passwords'); setSelectedItems(new Set()); setShowForm(false); setShowSettings(false); setDisplayLimit(50); }
         }, 'Passwords'),
         h('button', {
           className: activeCategory === 'cards' ? 'nav-item active' : 'nav-item',
-          onClick: () => { setActiveCategory('cards'); setSelectedItems(new Set()); setShowForm(false); setDisplayLimit(50); }
+          onClick: () => { setActiveCategory('cards'); setSelectedItems(new Set()); setShowForm(false); setShowSettings(false); setDisplayLimit(50); }
         }, 'Credit Cards')
       ),
 
@@ -1124,14 +1183,16 @@ function App() {
       ),
 
       h('div', { className: 'sidebar-footer' },
-        h('button', { className: 'btn-secondary sidebar-btn', onClick: handleImport }, 'Import'),
-        h('button', { className: 'btn-secondary sidebar-btn', onClick: handleExport }, 'Export'),
-        h('button', { className: 'btn-danger sidebar-btn', onClick: handleClearVault }, 'Clear'),
-        touchIdAvailable && h('button', {
-          className: touchIdEnabled ? 'btn-touchid-enabled sidebar-btn' : 'btn-secondary sidebar-btn',
-          onClick: touchIdEnabled ? handleDisableTouchId : handleEnableTouchId
-        }, touchIdEnabled ? 'Touch ID On' : 'Touch ID'),
-        h('button', { className: 'btn-secondary sidebar-btn', onClick: handleLock }, 'Lock')
+        h('button', {
+          className: showSettings ? 'nav-item active' : 'nav-item',
+          onClick: () => { setShowSettings(true); setSelectedItems(new Set()); setShowForm(false); }
+        },
+          h('span', { className: 'nav-item-content' },
+            h('span', { className: 'nav-icon' }, '⚙'),
+            'Settings'
+          )
+        ),
+        h('button', { className: 'btn-secondary sidebar-btn lock-btn', onClick: handleLock }, '🔒 Lock')
       )
     ),
 
@@ -1166,7 +1227,10 @@ function App() {
           `Loading ${loadingCount} of ${loadingTotal}...`
         ),
         categoryItems.length === 0 && !loading
-          ? h('p', { className: 'empty-message' }, activeCategory === 'cards' ? 'No credit cards saved yet.' : 'No passwords saved yet.')
+          ? h('div', { className: 'empty-message' },
+              h('p', null, activeCategory === 'favorites' ? 'No favorites yet' : activeCategory === 'cards' ? 'No credit cards saved yet.' : 'No passwords saved yet.'),
+              activeCategory === 'favorites' && h('p', { className: 'empty-hint' }, 'Click the ★ on any item to add it to favorites')
+            )
           : sortedItems.length === 0 && !loading
           ? h('p', { className: 'empty-message' }, 'No matching items.')
           : [
@@ -1190,7 +1254,12 @@ function App() {
                 ),
                 (item.tags && item.tags.length > 0) && h('div', { className: 'list-item-tags' },
                   item.tags.slice(0, 2).map(tag => h('span', { key: tag, className: 'tag-mini' }, tag))
-                )
+                ),
+                h('button', {
+                  className: `favorite-btn ${item.isFavorite ? 'active' : ''}`,
+                  onClick: (e) => { e.stopPropagation(); handleToggleFavorite(item); },
+                  title: item.isFavorite ? 'Remove from favorites' : 'Add to favorites'
+                }, '★')
               )
             ),
             hasMore && h('button', {
@@ -1204,7 +1273,63 @@ function App() {
 
     // Column 3: Detail Panel
     h('section', { className: 'detail-panel' },
-      showForm ? (
+      showSettings ? (
+        // Settings View
+        h('div', { className: 'detail-content settings-content' },
+          h('div', { className: 'detail-header' },
+            h('h2', null, 'Settings'),
+            h('button', { className: 'btn-secondary', onClick: () => setShowSettings(false) }, 'Close')
+          ),
+          h('div', { className: 'settings-sections' },
+            // Security Section
+            h('div', { className: 'settings-section' },
+              h('h3', { className: 'settings-section-title' }, 'Security'),
+              touchIdAvailable && h('div', { className: 'settings-row' },
+                h('div', { className: 'settings-row-info' },
+                  h('span', { className: 'settings-row-label' }, 'Touch ID'),
+                  h('span', { className: 'settings-row-desc' }, 'Use Touch ID to unlock your vault')
+                ),
+                h('button', {
+                  className: touchIdEnabled ? 'btn-toggle active' : 'btn-toggle',
+                  onClick: touchIdEnabled ? handleDisableTouchId : handleEnableTouchId
+                }, touchIdEnabled ? 'On' : 'Off')
+              ),
+              h('div', { className: 'settings-row' },
+                h('div', { className: 'settings-row-info' },
+                  h('span', { className: 'settings-row-label' }, 'Lock Vault'),
+                  h('span', { className: 'settings-row-desc' }, 'Lock now and require password to access')
+                ),
+                h('button', { className: 'btn-secondary', onClick: handleLock }, 'Lock Now')
+              )
+            ),
+            // Data Section
+            h('div', { className: 'settings-section' },
+              h('h3', { className: 'settings-section-title' }, 'Data'),
+              h('div', { className: 'settings-row' },
+                h('div', { className: 'settings-row-info' },
+                  h('span', { className: 'settings-row-label' }, 'Import'),
+                  h('span', { className: 'settings-row-desc' }, 'Import passwords from CSV file')
+                ),
+                h('button', { className: 'btn-secondary', onClick: handleImport }, 'Import')
+              ),
+              h('div', { className: 'settings-row' },
+                h('div', { className: 'settings-row-info' },
+                  h('span', { className: 'settings-row-label' }, 'Export'),
+                  h('span', { className: 'settings-row-desc' }, 'Export passwords to CSV file')
+                ),
+                h('button', { className: 'btn-secondary', onClick: handleExport }, 'Export')
+              ),
+              h('div', { className: 'settings-row settings-row-danger' },
+                h('div', { className: 'settings-row-info' },
+                  h('span', { className: 'settings-row-label' }, 'Clear Vault'),
+                  h('span', { className: 'settings-row-desc' }, 'Delete all entries permanently')
+                ),
+                h('button', { className: 'btn-danger', onClick: handleClearVault }, 'Clear All')
+              )
+            )
+          )
+        )
+      ) : showForm ? (
         // Add Form
         formType === 'password' ? h('div', { className: 'detail-content' },
           h('div', { className: 'detail-header' },
@@ -1272,6 +1397,15 @@ function App() {
                   )
                 )
               )
+            ),
+            h('div', { className: 'form-group' },
+              h('label', null, 'Website URL'),
+              h('input', {
+                type: 'text',
+                placeholder: 'https://example.com',
+                value: passwordForm.websiteUrl,
+                onChange: (e) => setPasswordForm({ ...passwordForm, websiteUrl: e.target.value })
+              })
             ),
             h('div', { className: 'form-group' },
               h('label', null, 'Tags'),
@@ -1457,6 +1591,15 @@ function App() {
                 })
               ),
               h('div', { className: 'form-group' },
+                h('label', null, 'Website URL'),
+                h('input', {
+                  type: 'text',
+                  placeholder: 'https://example.com',
+                  value: editForm.websiteUrl || '',
+                  onChange: (e) => setEditForm({ ...editForm, websiteUrl: e.target.value })
+                })
+              ),
+              h('div', { className: 'form-group' },
                 h('label', null, 'Tags'),
                 h(TagInput, {
                   tags: editForm.tags,
@@ -1480,6 +1623,11 @@ function App() {
                 h('h2', null, selectedItem.name),
                 h('span', { className: 'detail-type' }, 'Credit Card')
               ),
+              h('button', {
+                className: `favorite-btn-large ${selectedItem.isFavorite ? 'active' : ''}`,
+                onClick: () => handleToggleFavorite(selectedItem),
+                title: selectedItem.isFavorite ? 'Remove from favorites' : 'Add to favorites'
+              }, '★'),
               h('button', { className: 'btn-secondary btn-edit', onClick: () => handleStartEdit(selectedItem) }, 'Edit')
             ),
             h('div', { className: 'detail-fields' },
@@ -1538,6 +1686,11 @@ function App() {
                 h('h2', null, selectedItem.site),
                 h('span', { className: 'detail-type' }, 'Password')
               ),
+              h('button', {
+                className: `favorite-btn-large ${selectedItem.isFavorite ? 'active' : ''}`,
+                onClick: () => handleToggleFavorite(selectedItem),
+                title: selectedItem.isFavorite ? 'Remove from favorites' : 'Add to favorites'
+              }, '★'),
               h('button', { className: 'btn-secondary btn-edit', onClick: () => handleStartEdit(selectedItem) }, 'Edit')
             ),
             h('div', { className: 'detail-fields' },
@@ -1554,6 +1707,24 @@ function App() {
                   h('span', { className: 'mono' }, showSecrets[selectedItem.id] ? selectedItem.password : '••••••••'),
                   h('button', { className: 'btn-icon', onClick: () => toggleShowSecret(selectedItem.id) }, showSecrets[selectedItem.id] ? 'Hide' : 'Show'),
                   h('button', { className: 'btn-icon', onClick: () => copyToClipboard(selectedItem.password) }, 'Copy')
+                )
+              ),
+              selectedItem.websiteUrl && h('div', { className: 'detail-field website-field' },
+                h('label', null, 'Website'),
+                h('div', { className: 'field-value field-value-website' },
+                  h('span', { className: 'website-url', title: selectedItem.websiteUrl },
+                    extractDomain(selectedItem.websiteUrl) || selectedItem.websiteUrl
+                  ),
+                  h('div', { className: 'website-actions' },
+                    h('button', {
+                      className: 'btn-icon btn-primary-small',
+                      onClick: () => handleOpenWebsite(selectedItem.websiteUrl, selectedItem)
+                    }, 'Open & Fill'),
+                    h('button', {
+                      className: 'btn-icon',
+                      onClick: () => copyToClipboard(selectedItem.websiteUrl)
+                    }, 'Copy')
+                  )
                 )
               ),
               h('div', { className: 'detail-field' },

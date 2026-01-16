@@ -1332,3 +1332,243 @@ body::after {
   background: var(--danger-bg);
   color: var(--danger);
 }
+
+/* ========== Favorites Button ========== */
+.favorite-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+  opacity: 0;
+}
+
+.list-item:hover .favorite-btn,
+.list-item.selected .favorite-btn,
+.favorite-btn:focus,
+.favorite-btn.active {
+  opacity: 1;
+}
+
+.favorite-btn:hover {
+  color: var(--accent);
+  transform: scale(1.1);
+}
+
+.favorite-btn.active {
+  color: var(--accent);
+}
+
+.favorite-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+.favorite-btn-large {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  margin-right: 0.5rem;
+}
+
+.favorite-btn-large:hover {
+  color: var(--accent);
+  border-color: rgba(249, 115, 22, 0.3);
+  background: var(--accent-bg);
+}
+
+.favorite-btn-large.active {
+  color: var(--accent);
+  border-color: rgba(249, 115, 22, 0.3);
+  background: var(--accent-bg);
+}
+
+.favorite-btn-large:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ========== Nav Item Content ========== */
+.nav-item-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-icon {
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+.nav-icon.star-icon {
+  color: var(--accent);
+}
+
+.nav-item.active .nav-icon {
+  opacity: 1;
+}
+
+.nav-item-count {
+  margin-left: auto;
+  font-size: 0.65rem;
+  background: var(--glass-bg-elevated);
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--radius-pill);
+  color: var(--text-tertiary);
+}
+
+.nav-item.active .nav-item-count {
+  background: rgba(249, 115, 22, 0.15);
+  color: var(--accent);
+}
+
+/* ========== Website Field ========== */
+.website-field .field-value-website {
+  flex-wrap: wrap;
+}
+
+.website-url {
+  flex: 1;
+  min-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--info);
+}
+
+.website-actions {
+  display: flex;
+  gap: 0.35rem;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.field-value-website:hover .website-actions,
+.field-value-website:focus-within .website-actions {
+  opacity: 1;
+}
+
+.btn-primary-small {
+  background: linear-gradient(135deg, var(--accent-light) 0%, var(--accent-dark) 100%) !important;
+  color: white !important;
+  border: none !important;
+}
+
+.btn-primary-small:hover {
+  box-shadow: var(--shadow-glow-sm);
+}
+
+/* ========== Settings ========== */
+.settings-content {
+  max-width: 600px;
+}
+
+.settings-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.settings-section {
+  background: var(--glass-bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+}
+
+.settings-section-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.settings-row:first-of-type {
+  padding-top: 0;
+}
+
+.settings-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.settings-row-label {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.settings-row-desc {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.settings-row-danger .settings-row-label {
+  color: var(--danger);
+}
+
+.btn-toggle {
+  background: var(--glass-bg-elevated);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all var(--transition-fast);
+  min-width: 50px;
+}
+
+.btn-toggle:hover {
+  background: var(--glass-bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-toggle.active {
+  background: var(--accent-bg);
+  border-color: rgba(249, 115, 22, 0.3);
+  color: var(--accent);
+}
+
+.btn-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ========== Lock Button in Sidebar ========== */
+.lock-btn {
+  margin-top: 0.5rem;
+}
+
+/* ========== Empty Hint ========== */
+.empty-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+}
