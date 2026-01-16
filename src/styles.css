@@ -1572,3 +1572,24 @@ body::after {
   color: var(--text-muted);
   margin-top: 0.5rem;
 }
+
+/* ========== Form Validation ========== */
+.form-group.has-error label {
+  color: var(--danger);
+}
+
+.input-error {
+  border-color: var(--danger) !important;
+}
+
+.input-error:focus {
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.4), 0 0 16px rgba(239, 68, 68, 0.2) !important;
+}
+
+.field-error {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--danger);
+  margin-top: 0.35rem;
+  padding-left: 0.25rem;
+}

@@ -26,6 +26,33 @@ function extractDomain(site) {
   }
 }
 
+// Validate and normalize URL
+function validateUrl(url) {
+  if (!url || !url.trim()) return { valid: true, normalized: null, error: null };
+
+  let trimmed = url.trim();
+
+  // Add protocol if missing
+  if (!trimmed.includes('://')) {
+    trimmed = 'https://' + trimmed;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    // Must have a valid hostname with at least one dot (e.g., example.com)
+    if (!parsed.hostname || !parsed.hostname.includes('.')) {
+      return { valid: false, normalized: null, error: 'Invalid URL format' };
+    }
+    // Only allow http and https protocols
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return { valid: false, normalized: null, error: 'Only HTTP/HTTPS URLs allowed' };
+    }
+    return { valid: true, normalized: parsed.href, error: null };
+  } catch {
+    return { valid: false, normalized: null, error: 'Invalid URL format' };
+  }
+}
+
 // Generate deterministic color from string
 function hashColor(str) {
   let hash = 0;
@@ -360,6 +387,8 @@ function App() {
   const [editingItem, setEditingItem] = React.useState(null);
   const [editForm, setEditForm] = React.useState(null);
   const [contextMenu, setContextMenu] = React.useState(null); // { x, y, item }
+  const [urlError, setUrlError] = React.useState(null); // URL validation error for add form
+  const [editUrlError, setEditUrlError] = React.useState(null); // URL validation error for edit form
   const [lastClickedId, setLastClickedId] = React.useState(null); // Anchor for shift-select
 
   React.useEffect(() => {
@@ -467,17 +496,18 @@ function App() {
 
     if (formType === 'password') {
       if (!passwordForm.site || !passwordForm.username || !passwordForm.password) return;
-      // Normalize website URL
-      let websiteUrl = (passwordForm.websiteUrl || '').trim();
-      if (websiteUrl && !websiteUrl.includes('://')) {
-        websiteUrl = 'https://' + websiteUrl;
+      // Validate and normalize website URL
+      const urlValidation = validateUrl(passwordForm.websiteUrl);
+      if (!urlValidation.valid) {
+        setUrlError(urlValidation.error);
+        return;
       }
       itemData = {
         type: 'password',
         site: passwordForm.site,
         username: passwordForm.username,
         password: passwordForm.password,
-        websiteUrl: websiteUrl || null,
+        websiteUrl: urlValidation.normalized,
         tags: passwordForm.tags || [],
         isFavorite: false,
         createdAt: now,
@@ -508,6 +538,7 @@ function App() {
       setItems([...items, { ...itemData, id }]);
       setPasswordForm({ site: '', username: '', password: '', websiteUrl: '', tags: [] });
       setCardForm({ name: '', cardNumber: '', expiry: '', cvv: '', cardHolder: '', tags: [] });
+      setUrlError(null);
       setShowForm(false);
     }
   };
@@ -949,6 +980,7 @@ function App() {
   const handleCancelEdit = () => {
     setEditingItem(null);
     setEditForm(null);
+    setEditUrlError(null);
   };
 
   const handleSaveEdit = async () => {
@@ -975,17 +1007,18 @@ function App() {
       };
     } else {
       if (!editForm.site || !editForm.username || !editForm.password) return;
-      // Normalize website URL
-      let websiteUrl = (editForm.websiteUrl || '').trim();
-      if (websiteUrl && !websiteUrl.includes('://')) {
-        websiteUrl = 'https://' + websiteUrl;
+      // Validate and normalize website URL
+      const urlValidation = validateUrl(editForm.websiteUrl);
+      if (!urlValidation.valid) {
+        setEditUrlError(urlValidation.error);
+        return;
       }
       updatedData = {
         type: 'password',
         site: editForm.site,
         username: editForm.username,
         password: editForm.password,
-        websiteUrl: websiteUrl || null,
+        websiteUrl: urlValidation.normalized,
         tags: editForm.tags,
         isFavorite: editingItem.isFavorite || false,
         createdAt: editingItem.createdAt,
@@ -1000,6 +1033,7 @@ function App() {
       const updatedItem = { ...updatedData, id: editingItem.id };
       setItems(items.map(i => i.id === editingItem.id ? updatedItem : i));
       setSelectedItems(new Set([editingItem.id]));
+      setEditUrlError(null);
       setEditingItem(null);
       setEditForm(null);
       setImportStatus('Changes saved');
@@ -1398,14 +1432,28 @@ function App() {
                 )
               )
             ),
-            h('div', { className: 'form-group' },
+            h('div', { className: `form-group ${urlError ? 'has-error' : ''}` },
               h('label', null, 'Website URL'),
               h('input', {
                 type: 'text',
                 placeholder: 'https://example.com',
                 value: passwordForm.websiteUrl,
-                onChange: (e) => setPasswordForm({ ...passwordForm, websiteUrl: e.target.value })
-              })
+                className: urlError ? 'input-error' : '',
+                onChange: (e) => {
+                  setPasswordForm({ ...passwordForm, websiteUrl: e.target.value });
+                  if (urlError) setUrlError(null); // Clear error on change
+                },
+                onBlur: (e) => {
+                  const val = e.target.value.trim();
+                  if (val) {
+                    const validation = validateUrl(val);
+                    setUrlError(validation.valid ? null : validation.error);
+                  } else {
+                    setUrlError(null);
+                  }
+                }
+              }),
+              urlError && h('span', { className: 'field-error' }, urlError)
             ),
             h('div', { className: 'form-group' },
               h('label', null, 'Tags'),
@@ -1590,14 +1638,28 @@ function App() {
                   onChange: (e) => setEditForm({ ...editForm, password: e.target.value })
                 })
               ),
-              h('div', { className: 'form-group' },
+              h('div', { className: `form-group ${editUrlError ? 'has-error' : ''}` },
                 h('label', null, 'Website URL'),
                 h('input', {
                   type: 'text',
                   placeholder: 'https://example.com',
                   value: editForm.websiteUrl || '',
-                  onChange: (e) => setEditForm({ ...editForm, websiteUrl: e.target.value })
-                })
+                  className: editUrlError ? 'input-error' : '',
+                  onChange: (e) => {
+                    setEditForm({ ...editForm, websiteUrl: e.target.value });
+                    if (editUrlError) setEditUrlError(null);
+                  },
+                  onBlur: (e) => {
+                    const val = e.target.value.trim();
+                    if (val) {
+                      const validation = validateUrl(val);
+                      setEditUrlError(validation.valid ? null : validation.error);
+                    } else {
+                      setEditUrlError(null);
+                    }
+                  }
+                }),
+                editUrlError && h('span', { className: 'field-error' }, editUrlError)
               ),
               h('div', { className: 'form-group' },
                 h('label', null, 'Tags'),
