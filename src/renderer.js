@@ -619,7 +619,42 @@ function App() {
     const result = await window.electronAPI.importPasswords(masterPassword);
     if (result.canceled) {
       setImportStatus('');
-    } else if (result.success) {
+      return;
+    }
+    if (!result.success) {
+      setImportStatus(result.error || 'Import failed');
+      setTimeout(() => setImportStatus(''), 3000);
+      return;
+    }
+
+    // Streaming import
+    if (result.streaming) {
+      const pendingItems = [...items];
+      let importedCount = 0;
+
+      const removeBatchListener = window.electronAPI.onImportBatch((batch) => {
+        const normalized = batch.map(p => ({
+          ...p,
+          type: 'password',
+          createdAt: Date.now(),
+          modifiedAt: Date.now(),
+          accessCount: 0,
+          lastAccessed: null
+        }));
+        pendingItems.push(...normalized);
+        importedCount += batch.length;
+        setItems([...pendingItems]);
+        setImportStatus(`Importing... ${importedCount} of ${result.total}`);
+      });
+
+      const removeCompleteListener = window.electronAPI.onImportComplete((data) => {
+        removeBatchListener();
+        removeCompleteListener();
+        setImportStatus(`Imported ${data.count} passwords`);
+        setTimeout(() => setImportStatus(''), 3000);
+      });
+    } else {
+      // Legacy non-streaming (fallback)
       const importedWithMeta = result.passwords.map(p => ({
         ...p,
         type: 'password',
@@ -630,9 +665,6 @@ function App() {
       }));
       setItems([...items, ...importedWithMeta]);
       setImportStatus(`Imported ${result.count} passwords`);
-      setTimeout(() => setImportStatus(''), 3000);
-    } else {
-      setImportStatus(result.error || 'Import failed');
       setTimeout(() => setImportStatus(''), 3000);
     }
   };

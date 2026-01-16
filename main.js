@@ -306,20 +306,38 @@ ipcMain.handle('import-passwords', async (event, masterPassword) => {
       return { success: false, count: 0, error: 'No valid passwords found in file' };
     }
 
-    const vault = store.get('vault') || [];
-    const imported = [];
+    const total = passwords.length;
 
-    for (const pwd of passwords) {
-      const entry = {
-        id: Date.now() + Math.random(),
-        data: encrypt(JSON.stringify(pwd), masterPassword)
-      };
-      vault.push(entry);
-      imported.push({ ...pwd, id: entry.id });
-    }
+    // Return immediately, process in background
+    (async () => {
+      const vault = store.get('vault') || [];
+      const batchSize = 10;
 
-    store.set('vault', vault);
-    return { success: true, count: imported.length, passwords: imported };
+      for (let i = 0; i < passwords.length; i += batchSize) {
+        const batch = passwords.slice(i, i + batchSize);
+        const batchResults = [];
+
+        for (const pwd of batch) {
+          const entry = {
+            id: Date.now() + Math.random(),
+            data: encrypt(JSON.stringify(pwd), masterPassword)
+          };
+          vault.push(entry);
+          batchResults.push({ ...pwd, id: entry.id });
+        }
+
+        // Send progress batch to renderer
+        event.sender.send('import-batch', batchResults);
+
+        // Yield to event loop
+        await new Promise(resolve => setTimeout(resolve, 1));
+      }
+
+      store.set('vault', vault);
+      event.sender.send('import-complete', { count: total });
+    })();
+
+    return { success: true, count: 0, total, streaming: true };
   } catch (err) {
     return { success: false, count: 0, error: err.message };
   }

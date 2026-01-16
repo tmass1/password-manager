@@ -26,5 +26,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = () => callback();
     ipcRenderer.on('passwords-complete', listener);
     return () => ipcRenderer.removeListener('passwords-complete', listener);
+  },
+  // Progressive import listeners
+  onImportBatch: (callback) => {
+    const listener = (event, batch) => callback(batch);
+    ipcRenderer.on('import-batch', listener);
+    return () => ipcRenderer.removeListener('import-batch', listener);
+  },
+  onImportComplete: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('import-complete', listener);
+    return () => ipcRenderer.removeListener('import-complete', listener);
   }
 });
