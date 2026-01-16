@@ -358,11 +358,21 @@ function App() {
   const [loadingCount, setLoadingCount] = React.useState(0);
   const [editingItem, setEditingItem] = React.useState(null);
   const [editForm, setEditForm] = React.useState(null);
+  const [contextMenu, setContextMenu] = React.useState(null); // { x, y, item }
 
   React.useEffect(() => {
     checkVault();
     checkTouchId();
   }, []);
+
+  // Close context menu on click outside
+  React.useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    if (contextMenu) {
+      document.addEventListener('click', handleClick);
+      return () => document.removeEventListener('click', handleClick);
+    }
+  }, [contextMenu]);
 
   const checkVault = async () => {
     const exists = await window.electronAPI.checkVaultExists();
@@ -496,7 +506,45 @@ function App() {
     const success = await window.electronAPI.deletePassword(masterPassword, id);
     if (success) {
       setItems(items.filter(p => p.id !== id));
+      if (selectedItem && selectedItem.id === id) {
+        setSelectedItem(null);
+      }
     }
+  };
+
+  const handleContextMenu = (e, item) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, item });
+  };
+
+  const handleDuplicate = async (item) => {
+    const now = Date.now();
+    const duplicateData = {
+      ...item,
+      id: undefined,
+      createdAt: now,
+      modifiedAt: now,
+      accessCount: 0,
+      lastAccessed: null
+    };
+    delete duplicateData.id;
+
+    const id = await window.electronAPI.savePassword(masterPassword, duplicateData);
+    if (id) {
+      const newItem = { ...duplicateData, id };
+      setItems([...items, newItem]);
+      setSelectedItem(newItem);
+      setImportStatus('Entry duplicated');
+      setTimeout(() => setImportStatus(''), 1500);
+    }
+    setContextMenu(null);
+  };
+
+  const handleContextDelete = async (item) => {
+    if (confirm(`Delete "${item.type === 'card' ? item.name : item.site}"?`)) {
+      await handleDelete(item.id);
+    }
+    setContextMenu(null);
   };
 
   const toggleShowSecret = (id) => {
@@ -1036,7 +1084,8 @@ function App() {
               h('div', {
                 key: item.id,
                 className: `list-item ${selectedItem && selectedItem.id === item.id ? 'selected' : ''}`,
-                onClick: () => handleSelectItem(item)
+                onClick: () => handleSelectItem(item),
+                onContextMenu: (e) => handleContextMenu(e, item)
               },
                 h(ItemIcon, {
                   site: item.type === 'card' ? null : item.site,
@@ -1437,6 +1486,21 @@ function App() {
           h('p', { className: 'detail-empty-hint' }, 'or click + to add a new one')
         )
       )
+    ),
+
+    // Context Menu
+    contextMenu && h('div', {
+      className: 'context-menu',
+      style: { left: contextMenu.x, top: contextMenu.y }
+    },
+      h('button', {
+        className: 'context-menu-item',
+        onClick: () => handleDuplicate(contextMenu.item)
+      }, 'Duplicate...'),
+      h('button', {
+        className: 'context-menu-item context-menu-item-danger',
+        onClick: () => handleContextDelete(contextMenu.item)
+      }, 'Delete')
     )
   );
 }
