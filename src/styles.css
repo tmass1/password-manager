@@ -1039,6 +1039,37 @@ body::after {
   box-shadow: var(--focus-ring), var(--shadow-glow);
 }
 
+.btn-touchid-icon {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 1rem;
+  border-radius: 50%;
+  transition: all var(--transition-normal);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-touchid-icon:hover {
+  background: var(--accent-bg);
+  transform: scale(1.05);
+}
+
+.btn-touchid-icon:active {
+  transform: scale(0.95);
+}
+
+.btn-touchid-icon:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.btn-touchid-icon svg {
+  filter: drop-shadow(0 0 8px var(--accent-glow));
+}
+
 /* ========== Tags ========== */
 .tag {
   background: var(--accent-bg);
