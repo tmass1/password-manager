@@ -24,7 +24,7 @@ function App() {
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [passwords, setPasswords] = React.useState([]);
   const [showForm, setShowForm] = React.useState(false);
-  const [formData, setFormData] = React.useState({ site: '', username: '', password: '' });
+  const [formData, setFormData] = React.useState({ site: '', username: '', password: '', tags: '' });
   const [error, setError] = React.useState('');
   const [showPasswords, setShowPasswords] = React.useState({});
   const [showGenerator, setShowGenerator] = React.useState(false);
@@ -91,10 +91,15 @@ function App() {
   const handleAddPassword = async (e) => {
     e.preventDefault();
     if (formData.site && formData.username && formData.password) {
-      const id = await window.electronAPI.savePassword(masterPassword, formData);
+      const tagsArray = formData.tags
+        .split(',')
+        .map(t => t.trim().toLowerCase())
+        .filter(t => t);
+      const passwordData = { ...formData, tags: tagsArray };
+      const id = await window.electronAPI.savePassword(masterPassword, passwordData);
       if (id) {
-        setPasswords([...passwords, { ...formData, id }]);
-        setFormData({ site: '', username: '', password: '' });
+        setPasswords([...passwords, { ...passwordData, id }]);
+        setFormData({ site: '', username: '', password: '', tags: '' });
         setShowForm(false);
       }
     }
@@ -130,8 +135,18 @@ function App() {
 
   const filteredPasswords = passwords.filter(p => {
     const query = searchQuery.toLowerCase();
-    return p.site.toLowerCase().includes(query) || p.username.toLowerCase().includes(query);
+    const tags = p.tags || [];
+    const matchesTags = tags.some(tag => tag.toLowerCase().includes(query));
+    return p.site.toLowerCase().includes(query) ||
+           p.username.toLowerCase().includes(query) ||
+           matchesTags;
   });
+
+  const allTags = [...new Set(passwords.flatMap(p => p.tags || []))].sort();
+
+  const handleTagClick = (tag) => {
+    setSearchQuery(tag);
+  };
 
   const handleImport = async () => {
     setImportStatus('Importing...');
@@ -294,6 +309,12 @@ function App() {
           onClick: () => setShowGenerator(!showGenerator)
         }, 'Generate')
       ),
+      h('input', {
+        type: 'text',
+        placeholder: 'Tags (comma separated, e.g. work, social, banking)',
+        value: formData.tags,
+        onChange: (e) => setFormData({ ...formData, tags: e.target.value })
+      }),
       showGenerator && h('div', { className: 'generator-box' },
         h('div', { className: 'generator-options' },
           h('div', { className: 'option-row' },
@@ -361,10 +382,24 @@ function App() {
     h('div', { className: 'search-box' },
       h('input', {
         type: 'text',
-        placeholder: 'Search passwords...',
+        placeholder: 'Search by site, username, or tag...',
         value: searchQuery,
         onChange: (e) => setSearchQuery(e.target.value)
-      })
+      }),
+      searchQuery && h('button', {
+        className: 'btn-clear-search',
+        onClick: () => setSearchQuery('')
+      }, 'Clear')
+    ),
+    allTags.length > 0 && h('div', { className: 'tags-filter' },
+      h('span', { className: 'tags-label' }, 'Tags:'),
+      allTags.map(tag =>
+        h('button', {
+          key: tag,
+          className: searchQuery === tag ? 'tag-btn active' : 'tag-btn',
+          onClick: () => handleTagClick(tag)
+        }, tag)
+      )
     ),
     h('div', { className: 'password-list' },
       passwords.length === 0
@@ -378,6 +413,15 @@ function App() {
                 h('span', null, p.username),
                 h('span', { className: 'password-value' },
                   showPasswords[p.id] ? p.password : '••••••••'
+                ),
+                (p.tags && p.tags.length > 0) && h('div', { className: 'password-tags' },
+                  p.tags.map(tag =>
+                    h('span', {
+                      key: tag,
+                      className: 'tag',
+                      onClick: () => handleTagClick(tag)
+                    }, tag)
+                  )
                 )
               ),
               h('div', { className: 'password-actions' },
