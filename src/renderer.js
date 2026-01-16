@@ -1380,7 +1380,6 @@ function App() {
             )
           )
         )
-        )
       ) : (
         // Empty state
         h('div', { className: 'detail-empty' },
