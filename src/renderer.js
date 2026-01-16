@@ -359,6 +359,7 @@ function App() {
   const [editingItem, setEditingItem] = React.useState(null);
   const [editForm, setEditForm] = React.useState(null);
   const [contextMenu, setContextMenu] = React.useState(null); // { x, y, item }
+  const [lastClickedId, setLastClickedId] = React.useState(null); // Anchor for shift-select
 
   React.useEffect(() => {
     checkVault();
@@ -1017,11 +1018,33 @@ function App() {
     );
   }
 
-  // Helper to select an item (supports multi-select with Cmd/Ctrl)
+  // Helper to select an item (supports multi-select with Cmd/Ctrl and Shift)
   const handleSelectItem = (item, e) => {
     setShowForm(false);
 
-    if (e && (e.metaKey || e.ctrlKey)) {
+    if (e && e.shiftKey && lastClickedId !== null) {
+      // Shift+click: range selection
+      const currentIndex = displayedItems.findIndex(i => i.id === item.id);
+      const lastIndex = displayedItems.findIndex(i => i.id === lastClickedId);
+
+      if (currentIndex !== -1 && lastIndex !== -1) {
+        const start = Math.min(currentIndex, lastIndex);
+        const end = Math.max(currentIndex, lastIndex);
+        const rangeIds = displayedItems.slice(start, end + 1).map(i => i.id);
+
+        if (e.metaKey || e.ctrlKey) {
+          // Shift+Cmd: add range to existing selection
+          setSelectedItems(prev => {
+            const next = new Set(prev);
+            rangeIds.forEach(id => next.add(id));
+            return next;
+          });
+        } else {
+          // Shift only: replace selection with range
+          setSelectedItems(new Set(rangeIds));
+        }
+      }
+    } else if (e && (e.metaKey || e.ctrlKey)) {
       // Cmd/Ctrl+click: toggle selection
       setSelectedItems(prev => {
         const next = new Set(prev);
@@ -1032,9 +1055,11 @@ function App() {
         }
         return next;
       });
+      setLastClickedId(item.id);
     } else {
       // Regular click: single select
       setSelectedItems(new Set([item.id]));
+      setLastClickedId(item.id);
     }
   };
 
