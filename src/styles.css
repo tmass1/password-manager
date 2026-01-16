@@ -995,6 +995,27 @@ body::after {
   box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.4), 0 0 16px rgba(239, 68, 68, 0.2);
 }
 
+.btn-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all var(--transition-normal);
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.4), 0 0 16px rgba(239, 68, 68, 0.2);
+}
+
 .btn-touchid, .btn-touchid-enabled {
   background: linear-gradient(135deg, var(--accent-light) 0%, var(--accent-dark) 100%);
   color: white;

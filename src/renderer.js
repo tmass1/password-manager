@@ -651,6 +651,23 @@ function App() {
     }
   };
 
+  const handleClearVault = async () => {
+    if (!confirm('Are you sure you want to delete ALL entries? This cannot be undone.')) {
+      return;
+    }
+    setImportStatus('Clearing vault...');
+    const result = await window.electronAPI.clearVault(masterPassword);
+    if (result.success) {
+      setItems([]);
+      setSelectedItem(null);
+      setImportStatus('Vault cleared');
+      setTimeout(() => setImportStatus(''), 3000);
+    } else {
+      setImportStatus(result.error || 'Failed to clear vault');
+      setTimeout(() => setImportStatus(''), 3000);
+    }
+  };
+
   const handleTouchIdUnlock = async () => {
     setError('');
     setLoading(true);
@@ -938,6 +955,7 @@ function App() {
       h('div', { className: 'sidebar-footer' },
         h('button', { className: 'btn-secondary sidebar-btn', onClick: handleImport }, 'Import'),
         h('button', { className: 'btn-secondary sidebar-btn', onClick: handleExport }, 'Export'),
+        h('button', { className: 'btn-danger sidebar-btn', onClick: handleClearVault }, 'Clear'),
         touchIdAvailable && h('button', {
           className: touchIdEnabled ? 'btn-touchid-enabled sidebar-btn' : 'btn-secondary sidebar-btn',
           onClick: touchIdEnabled ? handleDisableTouchId : handleEnableTouchId

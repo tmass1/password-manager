@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deletePassword: (masterPassword, id) => ipcRenderer.invoke('delete-password', { masterPassword, id }),
   importPasswords: (masterPassword) => ipcRenderer.invoke('import-passwords', masterPassword),
   exportPasswords: (masterPassword) => ipcRenderer.invoke('export-passwords', masterPassword),
+  clearVault: (masterPassword) => ipcRenderer.invoke('clear-vault', masterPassword),
   checkTouchIdAvailable: () => ipcRenderer.invoke('check-touch-id-available'),
   checkTouchIdEnabled: () => ipcRenderer.invoke('check-touch-id-enabled'),
   enableTouchId: (masterPassword) => ipcRenderer.invoke('enable-touch-id', masterPassword),

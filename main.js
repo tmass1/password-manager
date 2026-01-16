@@ -273,8 +273,14 @@ function parseCSV(text) {
     const username = entry.username || entry.login || entry.email || entry.user || '';
     const password = entry.password || entry.pass || '';
 
+    // Parse tags - support semicolon, comma, or slash as separators within the cell
+    const tagsRaw = entry.tags || entry.tag || entry.labels || entry.label || '';
+    const tags = tagsRaw
+      ? tagsRaw.split(/[;,\/]/).map(t => t.trim().toLowerCase()).filter(t => t)
+      : [];
+
     if (site && password) {
-      passwords.push({ site, username, password });
+      passwords.push({ site, username, password, tags });
     }
   }
 
@@ -348,15 +354,32 @@ ipcMain.handle('export-passwords', async (event, masterPassword) => {
       return str;
     };
 
-    let csv = 'url,username,password\n';
+    let csv = 'url,username,password,tags\n';
     for (const pwd of passwords) {
-      csv += `${escapeCSV(pwd.site)},${escapeCSV(pwd.username)},${escapeCSV(pwd.password)}\n`;
+      const tagsStr = Array.isArray(pwd.tags) ? pwd.tags.join(';') : '';
+      csv += `${escapeCSV(pwd.site)},${escapeCSV(pwd.username)},${escapeCSV(pwd.password)},${escapeCSV(tagsStr)}\n`;
     }
 
     fs.writeFileSync(result.filePath, csv, 'utf-8');
     return { success: true, count: passwords.length };
   } catch (err) {
     return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('clear-vault', (event, masterPassword) => {
+  try {
+    // Verify master password first
+    const checkData = store.get('vaultCheck');
+    const result = decrypt(checkData, masterPassword);
+    if (result !== 'vault-check') {
+      return { success: false, error: 'Invalid master password' };
+    }
+
+    store.set('vault', []);
+    return { success: true };
+  } catch {
+    return { success: false, error: 'Failed to clear vault' };
   }
 });
 
