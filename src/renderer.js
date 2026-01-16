@@ -375,20 +375,6 @@ function App() {
     }
   }, [contextMenu]);
 
-  // Keyboard shortcuts (Cmd+A to select all)
-  React.useEffect(() => {
-    const handleKeyDown = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'a' && screen === 'vault' && !showForm) {
-        e.preventDefault();
-        if (displayedItems.length > 0) {
-          setSelectedItems(new Set(displayedItems.map(i => i.id)));
-        }
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [screen, showForm, displayedItems]);
-
   const checkVault = async () => {
     const exists = await window.electronAPI.checkVaultExists();
     setScreen(exists ? 'unlock' : 'setup');
@@ -709,6 +695,20 @@ function App() {
   // Limit displayed items for performance
   const displayedItems = sortedItems.slice(0, displayLimit);
   const hasMore = sortedItems.length > displayLimit;
+
+  // Keyboard shortcuts (Cmd+A to select all)
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'a' && !showForm) {
+        e.preventDefault();
+        if (displayedItems.length > 0) {
+          setSelectedItems(new Set(displayedItems.map(i => i.id)));
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showForm, displayedItems]);
 
   const handleTagClick = (tag) => {
     setSearchQuery(tag);
